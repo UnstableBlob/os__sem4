@@ -3,10 +3,17 @@
 #include <semaphore.h>
 
 #define ITERATIONS 500000
+#define QUEUE_SIZE 100
 
 int count = 0;
 pthread_mutex_t mutex;
+pthread_mutex_t queue_mutex;
 sem_t semaphore;
+
+int queue[QUEUE_SIZE];
+int front = 0;
+int rear = 0;
+int queue_count = 0;
 
 void* producer_no_sync(void* arg) {
     for (int i = 0; i < ITERATIONS; i++) {
@@ -36,6 +43,58 @@ void* consumer_with_sync(void* arg) {
         pthread_mutex_lock(&mutex);
         count--;
         pthread_mutex_unlock(&mutex);
+    }
+    return NULL;
+}
+
+void* producer_queue_no_sync(void* arg) {
+    for (int i = 0; i < ITERATIONS; i++) {
+        if (queue_count < QUEUE_SIZE) {
+            queue[rear] = i;
+            rear = (rear + 1) % QUEUE_SIZE;
+            queue_count++;
+            count++;
+        }
+    }
+    return NULL;
+}
+
+void* consumer_queue_no_sync(void* arg) {
+    for (int i = 0; i < ITERATIONS; i++) {
+        if (queue_count > 0) {
+            int item = queue[front];
+            front = (front + 1) % QUEUE_SIZE;
+            queue_count--;
+            count--;
+        }
+    }
+    return NULL;
+}
+
+void* producer_queue_with_sync(void* arg) {
+    for (int i = 0; i < ITERATIONS; i++) {
+        pthread_mutex_lock(&queue_mutex);
+        if (queue_count < QUEUE_SIZE) {
+            queue[rear] = i;
+            rear = (rear + 1) % QUEUE_SIZE;
+            queue_count++;
+            count++;
+        }
+        pthread_mutex_unlock(&queue_mutex);
+    }
+    return NULL;
+}
+
+void* consumer_queue_with_sync(void* arg) {
+    for (int i = 0; i < ITERATIONS; i++) {
+        pthread_mutex_lock(&queue_mutex);
+        if (queue_count > 0) {
+            int item = queue[front];
+            front = (front + 1) % QUEUE_SIZE;
+            queue_count--;
+            count--;
+        }
+        pthread_mutex_unlock(&queue_mutex);
     }
     return NULL;
 }
@@ -71,6 +130,42 @@ int main() {
     
     pthread_mutex_destroy(&mutex);
     sem_destroy(&semaphore);
+    
+    printf("PART 3: QUEUE WITHOUT MUTEX LOCK\n");
+    
+    count = 0;
+    front = 0;
+    rear = 0;
+    queue_count = 0;
+    
+    pthread_create(&producer, NULL, producer_queue_no_sync, NULL);
+    pthread_create(&consumer, NULL, consumer_queue_no_sync, NULL);
+    
+    pthread_join(producer, NULL);
+    pthread_join(consumer, NULL);
+    
+    printf("Final count: %d\n", count);
+    printf("Queue count: %d\n\n", queue_count);
+    
+    printf("PART 4: QUEUE WITH MUTEX LOCK\n");
+    
+    count = 0;
+    front = 0;
+    rear = 0;
+    queue_count = 0;
+    
+    pthread_mutex_init(&queue_mutex, NULL);
+    
+    pthread_create(&producer, NULL, producer_queue_with_sync, NULL);
+    pthread_create(&consumer, NULL, consumer_queue_with_sync, NULL);
+    
+    pthread_join(producer, NULL);
+    pthread_join(consumer, NULL);
+    
+    printf("Final count: %d\n", count);
+    printf("Queue count: %d\n\n", queue_count);
+    
+    pthread_mutex_destroy(&queue_mutex);
     
     return 0;
 }
